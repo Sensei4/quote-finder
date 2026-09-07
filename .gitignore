@@ -1,0 +1,22 @@
+# Зависимости
+node_modules/
+package-lock.json
+
+# Временные файлы
+uploads/
+*.log
+
+# Файлы окружения
+.env
+.env.local
+
+# Файлы Docker
+.docker/
+
+# Файлы OS
+.DS_Store
+Thumbs.db
+
+# Временные файлы редактора
+.vscode/*
+!.vscode/settings.json
