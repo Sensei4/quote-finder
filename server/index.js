@@ -4,6 +4,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const pdfParse = require("pdf-parse");
+const mammoth = require("mammoth");
 const pool = require("./db");
 
 const app = express();
@@ -84,15 +85,18 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
       // TXT: просто читаем файл
       rawText = fs.readFileSync(filePath, "utf-8");
     } else if (fileExt === "pdf") {
-      // PDF: используем pdf-parse для извлечения текста
+      // PDF: извлекаем текст через pdf-parse
       const pdfBuffer = fs.readFileSync(filePath);
       const pdfData = await pdfParse(pdfBuffer);
       rawText = pdfData.text;
+    } else if (fileExt === "docx") {
+      // DOCX: извлекаем текст через mammoth
+      const result = await mammoth.extractRawText({ path: filePath });
+      rawText = result.value;
     } else {
-      // Пока поддерживаем TXT и PDF
-      fs.unlinkSync(filePath); // Удаляем временный файл
+      fs.unlinkSync(filePath);
       return res.status(400).json({
-        error: `Формат .${fileExt} пока не поддерживается. Загрузите TXT или PDF файл.`,
+        error: `Формат .${fileExt} пока не поддерживается. Загрузите TXT, PDF или DOCX.`,
       });
     }
 
