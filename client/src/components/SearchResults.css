@@ -143,6 +143,14 @@
   background-color: #c0392b;
 }
 
+.export-button.docx {
+  background-color: #2980b9;
+}
+
+.export-button.docx:hover:not(:disabled) {
+  background-color: #1f6dad;
+}
+
 /* Анимация появления результатов */
 @keyframes fadeInUp {
   from {

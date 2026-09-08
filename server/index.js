@@ -11,6 +11,15 @@ const fs = require("fs");
 const mammoth = require("mammoth");
 const PDFDocument = require("pdfkit");
 const WordExtractor = require("word-extractor");
+const {
+  Document,
+  Packer,
+  Paragraph,
+  TextRun,
+  HeadingLevel,
+  AlignmentType,
+  BorderStyle,
+} = require("docx");
 const { stripRtf } = require("rtf-to-text");
 const pool = require("./db");
 
@@ -453,6 +462,195 @@ app.post("/api/export/pdf", async (req, res) => {
   } catch (error) {
     console.error("Ошибка экспорта в PDF:", error);
     res.status(500).json({ error: "Ошибка при экспорте в PDF" });
+  }
+});
+
+// МАРШРУТ: Экспорт результатов в DOCX
+app.post("/api/export/docx", async (req, res) => {
+  const { sentences } = req.body;
+
+  if (!sentences || !Array.isArray(sentences) || sentences.length === 0) {
+    return res.status(400).json({ error: "Нет данных для экспорта" });
+  }
+
+  try {
+    // Создаём документ
+    const doc = new Document({
+      sections: [
+        {
+          properties: {
+            page: {
+              margin: {
+                top: 1000,
+                bottom: 1000,
+                left: 1000,
+                right: 1000,
+              },
+            },
+          },
+          children: [
+            // Заголовок
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: "Quote Finder",
+                  bold: true,
+                  size: 40,
+                  color: "2c3e50",
+                }),
+              ],
+              alignment: AlignmentType.CENTER,
+              spacing: { after: 200 },
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: "Результаты поиска",
+                  size: 28,
+                  color: "7f8c8d",
+                }),
+              ],
+              alignment: AlignmentType.CENTER,
+              spacing: { after: 400 },
+            }),
+
+            // Разделитель
+            new Paragraph({
+              children: [],
+              border: {
+                bottom: {
+                  color: "bdc3c7",
+                  style: BorderStyle.SINGLE,
+                  size: 6,
+                  space: 20,
+                },
+              },
+              spacing: { after: 300 },
+            }),
+
+            // Информация о поиске
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `Дата: ${new Date().toLocaleString("ru-RU")}`,
+                  size: 22,
+                  color: "555555",
+                }),
+              ],
+              spacing: { after: 100 },
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `Всего цитат: ${sentences.length}`,
+                  size: 22,
+                  color: "555555",
+                }),
+              ],
+              spacing: { after: 300 },
+            }),
+
+            // Цитаты
+            ...sentences.flatMap((sentence, index) => {
+              const cleanText = (sentence.content || "[нет текста]").replace(
+                /<[^>]+>/g,
+                "",
+              );
+
+              const paragraphs = [];
+
+              // Номер цитаты
+              paragraphs.push(
+                new Paragraph({
+                  children: [
+                    new TextRun({
+                      text: `[${index + 1}]`,
+                      bold: true,
+                      size: 24,
+                      color: "3498db",
+                    }),
+                  ],
+                  spacing: { before: 200, after: 100 },
+                }),
+              );
+
+              // Текст цитаты
+              paragraphs.push(
+                new Paragraph({
+                  children: [
+                    new TextRun({
+                      text: cleanText,
+                      size: 26,
+                      color: "2c3e50",
+                    }),
+                  ],
+                  indent: { left: 400 },
+                  spacing: { after: 200 },
+                }),
+              );
+
+              // Разделитель между цитатами
+              if (index < sentences.length - 1) {
+                paragraphs.push(
+                  new Paragraph({
+                    children: [],
+                    border: {
+                      bottom: {
+                        color: "ecf0f1",
+                        style: BorderStyle.SINGLE,
+                        size: 4,
+                        space: 15,
+                      },
+                    },
+                    spacing: { after: 100 },
+                  }),
+                );
+              }
+
+              return paragraphs;
+            }),
+
+            // Футер
+            new Paragraph({
+              children: [],
+              border: {
+                top: {
+                  color: "bdc3c7",
+                  style: BorderStyle.SINGLE,
+                  size: 6,
+                  space: 20,
+                },
+              },
+              spacing: { before: 300, after: 100 },
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: "Сгенерировано Quote Finder",
+                  size: 18,
+                  color: "95a5a6",
+                }),
+              ],
+              alignment: AlignmentType.CENTER,
+            }),
+          ],
+        },
+      ],
+    });
+
+    // Генерируем буфер
+    const buffer = await Packer.toBuffer(doc);
+
+    // Отправляем файл
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
+    res.setHeader("Content-Disposition", 'attachment; filename="quotes.docx"');
+    res.send(buffer);
+  } catch (error) {
+    console.error("Ошибка экспорта в DOCX:", error);
+    res.status(500).json({ error: "Ошибка при экспорте в DOCX" });
   }
 });
 

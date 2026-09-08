@@ -1,5 +1,10 @@
 import { useState } from "react";
-import { getContext, exportToTxt, exportToPdf } from "../api/client";
+import {
+  getContext,
+  exportToTxt,
+  exportToPdf,
+  exportToDocx,
+} from "../api/client";
 import "./SearchResults.css";
 
 function SearchResults({ results, query }) {
@@ -7,7 +12,7 @@ function SearchResults({ results, query }) {
   const [contextData, setContextData] = useState(null);
   const [isLoadingContext, setIsLoadingContext] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [exportFormat, setExportFormat] = useState(null); // 'txt' или 'pdf'
+  const [exportFormat, setExportFormat] = useState(null); // 'txt', 'pdf', 'docx'
 
   if (!results || results.length === 0) {
     return null;
@@ -43,21 +48,24 @@ function SearchResults({ results, query }) {
     }));
   };
 
+  const downloadBlob = (blob, filename) => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
+
   const handleExportTxt = async () => {
     setIsExporting(true);
     setExportFormat("txt");
     try {
       const exportData = prepareExportData();
       const blob = await exportToTxt(exportData);
-
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "quotes.txt";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+      downloadBlob(blob, "quotes.txt");
     } catch (error) {
       console.error("Ошибка экспорта в TXT:", error);
       alert("Не удалось экспортировать в TXT");
@@ -73,18 +81,26 @@ function SearchResults({ results, query }) {
     try {
       const exportData = prepareExportData();
       const blob = await exportToPdf(exportData);
-
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "quotes.pdf";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+      downloadBlob(blob, "quotes.pdf");
     } catch (error) {
       console.error("Ошибка экспорта в PDF:", error);
       alert("Не удалось экспортировать в PDF");
+    } finally {
+      setIsExporting(false);
+      setExportFormat(null);
+    }
+  };
+
+  const handleExportDocx = async () => {
+    setIsExporting(true);
+    setExportFormat("docx");
+    try {
+      const exportData = prepareExportData();
+      const blob = await exportToDocx(exportData);
+      downloadBlob(blob, "quotes.docx");
+    } catch (error) {
+      console.error("Ошибка экспорта в DOCX:", error);
+      alert("Не удалось экспортировать в DOCX");
     } finally {
       setIsExporting(false);
       setExportFormat(null);
@@ -119,6 +135,16 @@ function SearchResults({ results, query }) {
             disabled={isExporting}
           >
             {isExporting && exportFormat === "pdf" ? "⏳ Экспорт..." : "⬇️ PDF"}
+          </button>
+
+          <button
+            className="export-button docx"
+            onClick={handleExportDocx}
+            disabled={isExporting}
+          >
+            {isExporting && exportFormat === "docx"
+              ? "⏳ Экспорт..."
+              : "⬇️ DOCX"}
           </button>
         </div>
       </div>
