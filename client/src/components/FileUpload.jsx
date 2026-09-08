@@ -41,7 +41,7 @@ function FileUpload({ onFileUploaded }) {
   // Основная функция загрузки
   const handleFile = async (file) => {
     // Проверяем расширение
-    const allowedTypes = ["txt", "pdf", "docx"];
+    const allowedTypes = ["txt", "pdf", "docx", "rtf", "doc"];
     const fileExt = file.name.split(".").pop().toLowerCase();
 
     if (!allowedTypes.includes(fileExt)) {
@@ -83,7 +83,7 @@ function FileUpload({ onFileUploaded }) {
           type="file"
           ref={fileInputRef}
           onChange={handleFileSelect}
-          accept=".txt,.pdf,.docx"
+          accept=".txt,.pdf,.docx,.rtf,.doc"
           style={{ display: "none" }}
         />
 
@@ -97,7 +97,9 @@ function FileUpload({ onFileUploaded }) {
             <div className="upload-icon">📄</div>
             <p>Перетащите файл сюда</p>
             <p className="upload-hint">или нажмите для выбора</p>
-            <p className="upload-formats">Поддерживаются: TXT, PDF, DOCX</p>
+            <p className="upload-formats">
+              Поддерживаются: TXT, PDF, DOCX, RTF, DOC
+            </p>
           </div>
         )}
       </div>

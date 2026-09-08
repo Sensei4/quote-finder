@@ -3,8 +3,9 @@ const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const pdfParse = require("pdf-parse");
 const mammoth = require("mammoth");
+const WordExtractor = require("word-extractor");
+const { stripRtf } = require("rtf-to-text");
 const pool = require("./db");
 
 const app = express();
@@ -30,16 +31,33 @@ const upload = multer({
 
 // Вспомогательная функция: разбивает текст на предложения
 function splitIntoSentences(text) {
-  // Убираем лишние пробелы и переносы строк
   const cleanText = text.replace(/\s+/g, " ").trim();
-
-  // Разбиваем по знакам конца предложения (. ! ? ...)
   const sentences = cleanText.match(/[^.!?]+[.!?]+["')\]]*(\s|$)|[^.!?]+$/g);
-
   if (!sentences) return [];
+  return sentences.map((s) => s.trim()).filter((s) => s.length > 2);
+}
 
-  // Очищаем каждое предложение и убираем пустые
-  return sentences.map((s) => s.trim()).filter((s) => s.length > 2); // Минимальная длина 3 символа
+// Функция для извлечения текста из PDF
+async function extractPdfText(filePath) {
+  const pdfParse = require("pdf-parse-fork");
+  const pdfBuffer = fs.readFileSync(filePath);
+  const pdfData = await pdfParse(pdfBuffer);
+  return pdfData.text;
+}
+
+// Функция для извлечения текста из RTF
+async function extractRtfText(filePath) {
+  const rtfBuffer = fs.readFileSync(filePath);
+  const rtfString = rtfBuffer.toString("utf-8");
+  const text = stripRtf(rtfString);
+  return text;
+}
+
+// Функция для извлечения текста из DOC (старый формат)
+async function extractDocText(filePath) {
+  const extractor = new WordExtractor();
+  const doc = await extractor.extract(filePath);
+  return doc.getBody();
 }
 
 // Тестовый маршрут
@@ -67,51 +85,51 @@ app.get("/api/health", async (req, res) => {
 
 // МАРШРУТ: Загрузка файла
 app.post("/api/upload", upload.single("file"), async (req, res) => {
-  // Проверяем, что файл вообще был отправлен
   if (!req.file) {
     return res.status(400).json({ error: "Файл не загружен" });
   }
 
   const filePath = req.file.path;
   const originalName = req.file.originalname;
-  const fileExt = path.extname(originalName).toLowerCase().slice(1); // 'txt', 'pdf', 'docx'
+  const fileExt = path.extname(originalName).toLowerCase().slice(1);
   const fileSize = req.file.size;
 
   try {
     let rawText = "";
 
-    // Парсим в зависимости от типа файла
-    if (fileExt === "txt") {
-      // TXT: просто читаем файл
-      rawText = fs.readFileSync(filePath, "utf-8");
-    } else if (fileExt === "pdf") {
-      // PDF: извлекаем текст через pdf-parse
-      const pdfBuffer = fs.readFileSync(filePath);
-      const pdfData = await pdfParse(pdfBuffer);
-      rawText = pdfData.text;
-    } else if (fileExt === "docx") {
-      // DOCX: извлекаем текст через mammoth
-      const result = await mammoth.extractRawText({ path: filePath });
-      rawText = result.value;
-    } else {
-      fs.unlinkSync(filePath);
-      return res.status(400).json({
-        error: `Формат .${fileExt} пока не поддерживается. Загрузите TXT, PDF или DOCX.`,
-      });
+    switch (fileExt) {
+      case "txt":
+        rawText = fs.readFileSync(filePath, "utf-8");
+        break;
+      case "pdf":
+        rawText = await extractPdfText(filePath);
+        break;
+      case "docx":
+        const docxResult = await mammoth.extractRawText({ path: filePath });
+        rawText = docxResult.value;
+        break;
+      case "rtf":
+        rawText = await extractRtfText(filePath);
+        break;
+      case "doc":
+        rawText = await extractDocText(filePath);
+        break;
+      default:
+        fs.unlinkSync(filePath);
+        return res.status(400).json({
+          error: `Формат .${fileExt} не поддерживается. Разрешены: TXT, PDF, DOCX, RTF, DOC`,
+        });
     }
 
-    // Сохраняем информацию о документе в БД
     const docResult = await pool.query(
       "INSERT INTO documents (filename, original_name, file_type, file_size) VALUES ($1, $2, $3, $4) RETURNING id",
       [req.file.filename, originalName, fileExt, fileSize],
     );
     const documentId = docResult.rows[0].id;
 
-    // Разбиваем текст на предложения
     const sentences = splitIntoSentences(rawText);
 
     if (sentences.length === 0) {
-      // Если текст пустой или не удалось разбить
       await pool.query("DELETE FROM documents WHERE id = $1", [documentId]);
       fs.unlinkSync(filePath);
       return res
@@ -119,7 +137,6 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
         .json({ error: "Не удалось извлечь текст из файла" });
     }
 
-    // Сохраняем предложения в БД
     for (let i = 0; i < sentences.length; i++) {
       await pool.query(
         "INSERT INTO sentences (document_id, position, content) VALUES ($1, $2, $3)",
@@ -127,10 +144,8 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
       );
     }
 
-    // Удаляем временный файл
     fs.unlinkSync(filePath);
 
-    // Отправляем результат
     res.json({
       message: "Файл успешно обработан",
       documentId: documentId,
@@ -141,7 +156,6 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
   } catch (error) {
     console.error("Ошибка обработки файла:", error);
 
-    // Удаляем временный файл в случае ошибки
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
@@ -154,9 +168,8 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 
 // МАРШРУТ: Поиск цитат
 app.get("/api/search", async (req, res) => {
-  const { query } = req.query; // Получаем ?query=философия
+  const { query } = req.query;
 
-  // Проверяем, что запрос не пустой
   if (!query || query.trim().length < 2) {
     return res.status(400).json({
       error: "Введите поисковый запрос (минимум 2 символа)",
@@ -164,7 +177,6 @@ app.get("/api/search", async (req, res) => {
   }
 
   try {
-    // SQL-запрос с полнотекстовым поиском
     const sql = `
             SELECT 
                 s.id,
@@ -172,20 +184,17 @@ app.get("/api/search", async (req, res) => {
                 s.document_id,
                 d.original_name AS document_name,
                 s.content AS original_content,
-                -- Подсвечиваем найденные слова тегами <b>...</b>
                 ts_headline('russian', s.content, q) AS highlighted_content
             FROM sentences s
             JOIN documents d ON s.document_id = d.id,
-            -- Преобразуем запрос пользователя в tsquery
             plainto_tsquery('russian', $1) AS q
-            WHERE s.tsv @@ q  -- @@ означает "совпадает"
+            WHERE s.tsv @@ q
             ORDER BY d.original_name, s.position
             LIMIT 50
         `;
 
     const result = await pool.query(sql, [query.trim()]);
 
-    // Возвращаем результат
     res.json({
       query: query,
       totalFound: result.rows.length,
@@ -202,15 +211,14 @@ app.get("/api/search", async (req, res) => {
 
 // МАРШРУТ: Получение контекста цитаты
 app.get("/api/context/:id", async (req, res) => {
-  const sentenceId = parseInt(req.params.id); // ID предложения
-  const contextSize = parseInt(req.query.size) || 2; // Сколько соседей брать (по умолчанию 2)
+  const sentenceId = parseInt(req.params.id);
+  const contextSize = parseInt(req.query.size) || 2;
 
   if (isNaN(sentenceId)) {
     return res.status(400).json({ error: "Некорректный ID предложения" });
   }
 
   try {
-    // 1. Находим само предложение
     const sentenceResult = await pool.query(
       "SELECT * FROM sentences WHERE id = $1",
       [sentenceId],
@@ -224,27 +232,20 @@ app.get("/api/context/:id", async (req, res) => {
     const docId = sentence.document_id;
     const position = sentence.position;
 
-    // 2. Достаём контекст: предложения до и после
     const contextResult = await pool.query(
       `SELECT 
                 s.id,
                 s.position,
                 s.content,
-                (s.position - $2) AS relative_position  -- -2, -1, 0, +1, +2
+                (s.position - $2) AS relative_position
              FROM sentences s
              WHERE s.document_id = $1 
                AND s.position >= $3 
                AND s.position <= $4
              ORDER BY s.position ASC`,
-      [
-        docId,
-        position, // $2 — позиция найденного предложения
-        position - contextSize, // $3 — нижняя граница
-        position + contextSize, // $4 — верхняя граница
-      ],
+      [docId, position, position - contextSize, position + contextSize],
     );
 
-    // 3. Формируем ответ
     res.json({
       sentenceId: sentenceId,
       documentId: docId,
@@ -258,9 +259,9 @@ app.get("/api/context/:id", async (req, res) => {
       context: contextResult.rows.map((row) => ({
         id: row.id,
         position: row.position,
-        relativePosition: row.relative_position, // 0 = найденное предложение
+        relativePosition: row.relative_position,
         content: row.content,
-        isTarget: row.position === position, // true для найденного
+        isTarget: row.position === position,
       })),
     });
   } catch (error) {
