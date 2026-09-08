@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
+import FileUpload from "./components/FileUpload";
 import "./App.css";
 
 function App() {
   const [serverStatus, setServerStatus] = useState("Проверяю соединение...");
+  const [lastUpload, setLastUpload] = useState(null);
 
   useEffect(() => {
-    // Проверяем, что бэкенд запущен
     fetch("http://localhost:5000/api/health")
       .then((res) => res.json())
       .then((data) => {
@@ -16,7 +17,11 @@ function App() {
       .catch(() => {
         setServerStatus("❌ Бэкенд не запущен. Запусти сервер на порту 5000");
       });
-  }, []);
+  }, [lastUpload]);
+
+  const handleFileUploaded = (result) => {
+    setLastUpload(result);
+  };
 
   return (
     <div className="app">
@@ -26,6 +31,8 @@ function App() {
       </header>
 
       <div className="status-bar">{serverStatus}</div>
+
+      <FileUpload onFileUploaded={handleFileUploaded} />
     </div>
   );
 }
