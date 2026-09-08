@@ -152,6 +152,54 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
   }
 });
 
+// МАРШРУТ: Поиск цитат
+app.get("/api/search", async (req, res) => {
+  const { query } = req.query; // Получаем ?query=философия
+
+  // Проверяем, что запрос не пустой
+  if (!query || query.trim().length < 2) {
+    return res.status(400).json({
+      error: "Введите поисковый запрос (минимум 2 символа)",
+    });
+  }
+
+  try {
+    // SQL-запрос с полнотекстовым поиском
+    const sql = `
+            SELECT 
+                s.id,
+                s.position,
+                s.document_id,
+                d.original_name AS document_name,
+                s.content AS original_content,
+                -- Подсвечиваем найденные слова тегами <b>...</b>
+                ts_headline('russian', s.content, q) AS highlighted_content
+            FROM sentences s
+            JOIN documents d ON s.document_id = d.id,
+            -- Преобразуем запрос пользователя в tsquery
+            plainto_tsquery('russian', $1) AS q
+            WHERE s.tsv @@ q  -- @@ означает "совпадает"
+            ORDER BY d.original_name, s.position
+            LIMIT 50
+        `;
+
+    const result = await pool.query(sql, [query.trim()]);
+
+    // Возвращаем результат
+    res.json({
+      query: query,
+      totalFound: result.rows.length,
+      results: result.rows,
+    });
+  } catch (error) {
+    console.error("Ошибка поиска:", error);
+    res.status(500).json({
+      error: "Ошибка при выполнении поиска",
+      details: error.message,
+    });
+  }
+});
+
 // Запуск сервера
 app.listen(PORT, () => {
   console.log(`🚀 Сервер запущен на http://localhost:${PORT}`);
