@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { getContext, exportToTxt } from "../api/client";
+import { getContext, exportToTxt, exportToPdf } from "../api/client";
 import "./SearchResults.css";
 
 function SearchResults({ results, query }) {
@@ -7,6 +7,7 @@ function SearchResults({ results, query }) {
   const [contextData, setContextData] = useState(null);
   const [isLoadingContext, setIsLoadingContext] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportFormat, setExportFormat] = useState(null); // 'txt' или 'pdf'
 
   if (!results || results.length === 0) {
     return null;
@@ -33,22 +34,22 @@ function SearchResults({ results, query }) {
     }
   };
 
+  const prepareExportData = () => {
+    return results.map((r) => ({
+      content:
+        r.original_content ||
+        r.highlighted_content?.replace(/<[^>]+>/g, "") ||
+        "[нет текста]",
+    }));
+  };
+
   const handleExportTxt = async () => {
     setIsExporting(true);
+    setExportFormat("txt");
     try {
-      // Подготавливаем данные для экспорта
-      // Убираем HTML-теги из highlighted_content, если original_content отсутствует
-      const exportData = results.map((r) => ({
-        content:
-          r.original_content ||
-          r.highlighted_content?.replace(/<[^>]+>/g, "") ||
-          "[нет текста]",
-        document_name: null, // Пока не выводим из-за проблем с кодировкой
-      }));
-
+      const exportData = prepareExportData();
       const blob = await exportToTxt(exportData);
 
-      // Создаём ссылку для скачивания
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -58,10 +59,35 @@ function SearchResults({ results, query }) {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error("Ошибка экспорта:", error);
-      alert("Не удалось экспортировать файл");
+      console.error("Ошибка экспорта в TXT:", error);
+      alert("Не удалось экспортировать в TXT");
     } finally {
       setIsExporting(false);
+      setExportFormat(null);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    setIsExporting(true);
+    setExportFormat("pdf");
+    try {
+      const exportData = prepareExportData();
+      const blob = await exportToPdf(exportData);
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "quotes.pdf";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Ошибка экспорта в PDF:", error);
+      alert("Не удалось экспортировать в PDF");
+    } finally {
+      setIsExporting(false);
+      setExportFormat(null);
     }
   };
 
@@ -78,13 +104,23 @@ function SearchResults({ results, query }) {
             По запросу <strong>«{query}»</strong> найдено: {results.length}
           </p>
         </div>
-        <button
-          className="export-button"
-          onClick={handleExportTxt}
-          disabled={isExporting}
-        >
-          {isExporting ? "⏳ Экспорт..." : "⬇️ Экспорт в TXT"}
-        </button>
+        <div className="export-buttons">
+          <button
+            className="export-button"
+            onClick={handleExportTxt}
+            disabled={isExporting}
+          >
+            {isExporting && exportFormat === "txt" ? "⏳ Экспорт..." : "⬇️ TXT"}
+          </button>
+
+          <button
+            className="export-button pdf"
+            onClick={handleExportPdf}
+            disabled={isExporting}
+          >
+            {isExporting && exportFormat === "pdf" ? "⏳ Экспорт..." : "⬇️ PDF"}
+          </button>
+        </div>
       </div>
 
       <div className="results-list">

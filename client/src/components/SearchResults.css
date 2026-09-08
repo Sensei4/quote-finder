@@ -130,6 +130,19 @@
   cursor: not-allowed;
 }
 
+.export-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.export-button.pdf {
+  background-color: #e74c3c;
+}
+
+.export-button.pdf:hover:not(:disabled) {
+  background-color: #c0392b;
+}
+
 /* Анимация появления результатов */
 @keyframes fadeInUp {
   from {

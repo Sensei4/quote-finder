@@ -2,8 +2,14 @@ const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
+const fontPath = path.join(
+  __dirname,
+  "fonts",
+  "Roboto-VariableFont_wdth,wght.ttf",
+);
 const fs = require("fs");
 const mammoth = require("mammoth");
+const PDFDocument = require("pdfkit");
 const WordExtractor = require("word-extractor");
 const { stripRtf } = require("rtf-to-text");
 const pool = require("./db");
@@ -318,6 +324,135 @@ app.post("/api/export/txt", async (req, res) => {
   } catch (error) {
     console.error("Ошибка экспорта в TXT:", error);
     res.status(500).json({ error: "Ошибка при экспорте" });
+  }
+});
+
+// МАРШРУТ: Экспорт результатов в PDF
+app.post("/api/export/pdf", async (req, res) => {
+  const { sentences } = req.body;
+
+  if (!sentences || !Array.isArray(sentences) || sentences.length === 0) {
+    return res.status(400).json({ error: "Нет данных для экспорта" });
+  }
+
+  try {
+    // Путь к шрифту (лежит в папке server/fonts/)
+    const fontPath = path.join(
+      __dirname,
+      "fonts",
+      "Roboto-VariableFont_wdth,wght.ttf",
+    );
+
+    // Проверяем, что шрифт существует
+    if (!fs.existsSync(fontPath)) {
+      console.error("Шрифт не найден:", fontPath);
+      return res.status(500).json({
+        error:
+          "Шрифт не найден. Поместите Roboto-VariableFont_wdth,wght.ttf в папку server/fonts/",
+      });
+    }
+
+    // Создаём PDF-документ
+    const doc = new PDFDocument({
+      size: "A4",
+      margins: { top: 50, bottom: 50, left: 50, right: 50 },
+      info: {
+        Title: "Quote Finder — Результаты поиска",
+        Author: "Quote Finder",
+      },
+    });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", 'attachment; filename="quotes.pdf"');
+
+    doc.pipe(res);
+
+    // Регистрируем шрифт с поддержкой кириллицы
+    doc.registerFont("Roboto", fontPath);
+
+    // Заголовок
+    doc.font("Roboto").fontSize(20).fillColor("#2c3e50").text("Quote Finder", {
+      align: "center",
+    });
+    doc.moveDown(0.5);
+    doc
+      .font("Roboto")
+      .fontSize(14)
+      .fillColor("#7f8c8d")
+      .text("Результаты поиска", {
+        align: "center",
+      });
+    doc.moveDown(1);
+
+    // Разделительная линия
+    doc
+      .strokeColor("#bdc3c7")
+      .lineWidth(1)
+      .moveTo(50, doc.y)
+      .lineTo(545, doc.y)
+      .stroke();
+    doc.moveDown(1);
+
+    // Информация о поиске
+    doc
+      .font("Roboto")
+      .fontSize(10)
+      .fillColor("#555555")
+      .text(`Дата: ${new Date().toLocaleString("ru-RU")}`);
+    doc.font("Roboto").text(`Всего цитат: ${sentences.length}`);
+    doc.moveDown(1);
+
+    // Выводим цитаты
+    sentences.forEach((sentence, index) => {
+      doc
+        .font("Roboto")
+        .fontSize(11)
+        .fillColor("#3498db")
+        .text(`[${index + 1}]`);
+      doc.moveDown(0.3);
+
+      const cleanText = (sentence.content || "[нет текста]").replace(
+        /<[^>]+>/g,
+        "",
+      );
+      doc.font("Roboto").fontSize(12).fillColor("#2c3e50").text(cleanText, {
+        indent: 20,
+        lineGap: 3,
+      });
+      doc.moveDown(0.5);
+
+      if (index < sentences.length - 1) {
+        doc
+          .strokeColor("#ecf0f1")
+          .lineWidth(0.5)
+          .moveTo(50, doc.y)
+          .lineTo(545, doc.y)
+          .stroke();
+        doc.moveDown(0.5);
+      }
+    });
+
+    // Футер
+    doc.moveDown(1);
+    doc
+      .strokeColor("#bdc3c7")
+      .lineWidth(1)
+      .moveTo(50, doc.y)
+      .lineTo(545, doc.y)
+      .stroke();
+    doc.moveDown(0.5);
+    doc
+      .font("Roboto")
+      .fontSize(9)
+      .fillColor("#95a5a6")
+      .text("Сгенерировано Quote Finder", {
+        align: "center",
+      });
+
+    doc.end();
+  } catch (error) {
+    console.error("Ошибка экспорта в PDF:", error);
+    res.status(500).json({ error: "Ошибка при экспорте в PDF" });
   }
 });
 

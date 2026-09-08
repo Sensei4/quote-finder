@@ -67,3 +67,17 @@ export const exportToTxt = async (sentences) => {
     throw error.response?.data || { error: "Ошибка экспорта" };
   }
 };
+
+// Функция для экспорта в PDF
+export const exportToPdf = async (sentences) => {
+  try {
+    const response = await axios.post(
+      `${API_URL}/export/pdf`,
+      { sentences },
+      { responseType: "blob" },
+    );
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { error: "Ошибка экспорта в PDF" };
+  }
+};
