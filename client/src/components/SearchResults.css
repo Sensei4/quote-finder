@@ -102,6 +102,34 @@
   padding-left: 12px;
 }
 
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.export-button {
+  background-color: #27ae60;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: background-color 0.3s;
+  white-space: nowrap;
+}
+
+.export-button:hover:not(:disabled) {
+  background-color: #219a52;
+}
+
+.export-button:disabled {
+  background-color: #95a5a6;
+  cursor: not-allowed;
+}
+
 /* Анимация появления результатов */
 @keyframes fadeInUp {
   from {

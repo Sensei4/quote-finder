@@ -53,3 +53,17 @@ export const checkHealth = async () => {
     throw error.response?.data || { error: "Сервер недоступен" };
   }
 };
+
+// Функция для экспорта в TXT
+export const exportToTxt = async (sentences) => {
+  try {
+    const response = await axios.post(
+      `${API_URL}/export/txt`,
+      { sentences },
+      { responseType: "blob" },
+    );
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || { error: "Ошибка экспорта" };
+  }
+};

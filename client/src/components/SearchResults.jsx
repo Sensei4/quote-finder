@@ -1,18 +1,18 @@
 import { useState } from "react";
-import { getContext } from "../api/client";
+import { getContext, exportToTxt } from "../api/client";
 import "./SearchResults.css";
 
 function SearchResults({ results, query }) {
   const [expandedId, setExpandedId] = useState(null);
   const [contextData, setContextData] = useState(null);
   const [isLoadingContext, setIsLoadingContext] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   if (!results || results.length === 0) {
     return null;
   }
 
   const handleShowContext = async (sentenceId) => {
-    // Если кликнули на тот же элемент — скрываем контекст
     if (expandedId === sentenceId) {
       setExpandedId(null);
       setContextData(null);
@@ -33,7 +33,38 @@ function SearchResults({ results, query }) {
     }
   };
 
-  // Функция для безопасного отображения подсвеченного текста
+  const handleExportTxt = async () => {
+    setIsExporting(true);
+    try {
+      // Подготавливаем данные для экспорта
+      // Убираем HTML-теги из highlighted_content, если original_content отсутствует
+      const exportData = results.map((r) => ({
+        content:
+          r.original_content ||
+          r.highlighted_content?.replace(/<[^>]+>/g, "") ||
+          "[нет текста]",
+        document_name: null, // Пока не выводим из-за проблем с кодировкой
+      }));
+
+      const blob = await exportToTxt(exportData);
+
+      // Создаём ссылку для скачивания
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "quotes.txt";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Ошибка экспорта:", error);
+      alert("Не удалось экспортировать файл");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const renderHighlighted = (text) => {
     return <span dangerouslySetInnerHTML={{ __html: text }} />;
   };
@@ -41,10 +72,19 @@ function SearchResults({ results, query }) {
   return (
     <div className="search-results">
       <div className="results-header">
-        <h2>Результаты поиска</h2>
-        <p className="results-count">
-          По запросу <strong>«{query}»</strong> найдено: {results.length}
-        </p>
+        <div>
+          <h2>Результаты поиска</h2>
+          <p className="results-count">
+            По запросу <strong>«{query}»</strong> найдено: {results.length}
+          </p>
+        </div>
+        <button
+          className="export-button"
+          onClick={handleExportTxt}
+          disabled={isExporting}
+        >
+          {isExporting ? "⏳ Экспорт..." : "⬇️ Экспорт в TXT"}
+        </button>
       </div>
 
       <div className="results-list">

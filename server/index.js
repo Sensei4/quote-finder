@@ -29,6 +29,17 @@ const upload = multer({
   },
 });
 
+// Функция для конвертации имени файла из latin1 в UTF-8
+function fixEncoding(str) {
+  if (!str) return str;
+  try {
+    // Если строка содержит символы в диапазоне latin1, конвертируем
+    return Buffer.from(str, "latin1").toString("utf8");
+  } catch (e) {
+    return str;
+  }
+}
+
 // Вспомогательная функция: разбивает текст на предложения
 function splitIntoSentences(text) {
   const cleanText = text.replace(/\s+/g, " ").trim();
@@ -90,7 +101,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
   }
 
   const filePath = req.file.path;
-  const originalName = req.file.originalname;
+  const originalName = fixEncoding(req.file.originalname);
   const fileExt = path.extname(originalName).toLowerCase().slice(1);
   const fileSize = req.file.size;
 
@@ -121,6 +132,11 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
         });
     }
 
+    // Очищаем ВСЕ старые документы перед загрузкой нового
+    // Для MVP: пользователь работает только с одним документом за раз
+    await pool.query("DELETE FROM documents");
+
+    // Сохраняем информацию о документе в БД
     const docResult = await pool.query(
       "INSERT INTO documents (filename, original_name, file_type, file_size) VALUES ($1, $2, $3, $4) RETURNING id",
       [req.file.filename, originalName, fileExt, fileSize],
@@ -270,6 +286,38 @@ app.get("/api/context/:id", async (req, res) => {
       error: "Ошибка при получении контекста",
       details: error.message,
     });
+  }
+});
+
+// МАРШРУТ: Экспорт результатов в TXT
+app.post("/api/export/txt", async (req, res) => {
+  const { sentences } = req.body;
+
+  if (!sentences || !Array.isArray(sentences) || sentences.length === 0) {
+    return res.status(400).json({ error: "Нет данных для экспорта" });
+  }
+
+  try {
+    let content = "📚 Quote Finder — Результаты поиска\n";
+    content += "=".repeat(50) + "\n\n";
+    content += `Дата: ${new Date().toLocaleString("ru-RU")}\n`;
+    content += `Всего цитат: ${sentences.length}\n\n`;
+    content += "=".repeat(50) + "\n\n";
+
+    sentences.forEach((sentence, index) => {
+      // Используем только текст цитаты, без имени файла
+      content += `[${index + 1}] ${sentence.content || "[нет текста]"}\n`;
+      content += "\n";
+    });
+
+    // BOM для корректного отображения кириллицы в Windows
+    const BOM = "\uFEFF";
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", 'attachment; filename="quotes.txt"');
+    res.send(BOM + content);
+  } catch (error) {
+    console.error("Ошибка экспорта в TXT:", error);
+    res.status(500).json({ error: "Ошибка при экспорте" });
   }
 });
 
