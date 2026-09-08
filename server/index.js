@@ -200,6 +200,78 @@ app.get("/api/search", async (req, res) => {
   }
 });
 
+// МАРШРУТ: Получение контекста цитаты
+app.get("/api/context/:id", async (req, res) => {
+  const sentenceId = parseInt(req.params.id); // ID предложения
+  const contextSize = parseInt(req.query.size) || 2; // Сколько соседей брать (по умолчанию 2)
+
+  if (isNaN(sentenceId)) {
+    return res.status(400).json({ error: "Некорректный ID предложения" });
+  }
+
+  try {
+    // 1. Находим само предложение
+    const sentenceResult = await pool.query(
+      "SELECT * FROM sentences WHERE id = $1",
+      [sentenceId],
+    );
+
+    if (sentenceResult.rows.length === 0) {
+      return res.status(404).json({ error: "Предложение не найдено" });
+    }
+
+    const sentence = sentenceResult.rows[0];
+    const docId = sentence.document_id;
+    const position = sentence.position;
+
+    // 2. Достаём контекст: предложения до и после
+    const contextResult = await pool.query(
+      `SELECT 
+                s.id,
+                s.position,
+                s.content,
+                (s.position - $2) AS relative_position  -- -2, -1, 0, +1, +2
+             FROM sentences s
+             WHERE s.document_id = $1 
+               AND s.position >= $3 
+               AND s.position <= $4
+             ORDER BY s.position ASC`,
+      [
+        docId,
+        position, // $2 — позиция найденного предложения
+        position - contextSize, // $3 — нижняя граница
+        position + contextSize, // $4 — верхняя граница
+      ],
+    );
+
+    // 3. Формируем ответ
+    res.json({
+      sentenceId: sentenceId,
+      documentId: docId,
+      documentName: (
+        await pool.query("SELECT original_name FROM documents WHERE id = $1", [
+          docId,
+        ])
+      ).rows[0].original_name,
+      contextSize: contextSize,
+      totalSentences: contextResult.rows.length,
+      context: contextResult.rows.map((row) => ({
+        id: row.id,
+        position: row.position,
+        relativePosition: row.relative_position, // 0 = найденное предложение
+        content: row.content,
+        isTarget: row.position === position, // true для найденного
+      })),
+    });
+  } catch (error) {
+    console.error("Ошибка получения контекста:", error);
+    res.status(500).json({
+      error: "Ошибка при получении контекста",
+      details: error.message,
+    });
+  }
+});
+
 // Запуск сервера
 app.listen(PORT, () => {
   console.log(`🚀 Сервер запущен на http://localhost:${PORT}`);
